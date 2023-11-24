@@ -25,7 +25,9 @@ var (
 )
 
 func init() {
-	flag.StringVar(&kubeconfigPath, "kubeconfig", "/home/adamw/.kube/config", "Path to the kubeconfig file")
+	homeDir, _ := os.LookupEnv("HOME")
+
+	flag.StringVar(&kubeconfigPath, "kubeconfig", fmt.Sprintf("%s/.kube/config", homeDir), "Path to the kubeconfig file")
 	flag.StringVar(&labelSelector, "label-selector", "app=myapp", "Label selector for ConfigMap filtering")
 	flag.Parse()
 }
