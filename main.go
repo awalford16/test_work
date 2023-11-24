@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -23,6 +24,12 @@ var (
 	kubeconfigPath string
 	labelSelector  string
 )
+
+type Worker struct {
+	ID      string
+	StopCh  chan struct{}
+	Stopped chan struct{}
+}
 
 func init() {
 	homeDir, _ := os.LookupEnv("HOME")
@@ -55,6 +62,9 @@ func main() {
 	ctx, _ := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 
+	// Create list of Workers to store individual channels
+	workers := make(map[string]*Worker)
+
 	labelOptions := informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
 		opts.LabelSelector = "component=my-config"
 	})
@@ -65,8 +75,16 @@ func main() {
 	inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			cm, _ := obj.(*v1.ConfigMap)
+
+			// Create channel for worker
+			stopCh := make(chan struct{})
+			worker := &Worker{ID: cm.Name, StopCh: stopCh}
+			workers[cm.Name] = worker
+
+			var wg sync.WaitGroup
+			wg.Add(1)
 			g.Go(func() error {
-				return processWork(ctx, cm)
+				return startRoutine(cm.Name, stopCh, &wg)
 			})
 		},
 		UpdateFunc: func(oldCM, newCM interface{}) {
@@ -84,9 +102,12 @@ func main() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
-			// cm, _ := obj.(*v1.ConfigMap)
+			cm, _ := obj.(*v1.ConfigMap)
 			// outputConfigMap(cm)
+
+			// Stop the worker
 			fmt.Println("removing capacity")
+			close(workers[cm.Name].StopCh)
 		},
 	})
 
@@ -132,6 +153,25 @@ func triggerError() error {
 	time.Sleep(15 * time.Second)
 
 	return errors.New("Program failed")
+}
+
+// Start this routine when a CM is created
+// If a CM is deleted then stop the routine
+func startRoutine(configMapName string, stopCh chan struct{}, wg *sync.WaitGroup) error {
+	defer wg.Done()
+
+	fmt.Printf("Starting routine for ConfigMap: %s\n", configMapName)
+
+	for {
+		select {
+		case <-time.After(5 * time.Second):
+			fmt.Printf("Routine for ConfigMap %s is running...\n", configMapName)
+
+		case <-stopCh:
+			fmt.Printf("Routine for ConfigMap %s stopped.\n", configMapName)
+			return nil
+		}
+	}
 }
 
 func processWork(ctx context.Context, cm *v1.ConfigMap) error {
