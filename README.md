@@ -1,4 +1,4 @@
-# Config Map Watcher
+## K8s--Golang
 
 For eductional purposes
 
@@ -20,3 +20,7 @@ Routine for ConfigMap my-config-2 is running...
 removing capacity
 Routine for ConfigMap my-config-2 stopped.
 ```
+
+### fake.go
+
+Testing with the k8s fake golang client
